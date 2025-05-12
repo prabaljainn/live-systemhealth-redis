@@ -1,0 +1,12 @@
+# Auto Configuration Import Filters
+org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+org.springframework.boot.autoconfigure.condition.OnClassCondition
+
+# Disable all actuator and metrics auto-configurations
+spring.autoconfigure.exclude=\
+org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration,\
+org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration,\
+org.springframework.boot.actuate.autoconfigure.metrics.web.servlet.WebMvcMetricsAutoConfiguration,\
+org.springframework.boot.actuate.autoconfigure.metrics.SystemMetricsAutoConfiguration,\
+org.springframework.boot.actuate.autoconfigure.web.server.ManagementContextAutoConfiguration,\
+org.springframework.boot.actuate.autoconfigure.endpoint.EndpointAutoConfiguration 

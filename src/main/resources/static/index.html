@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REDIS System Health Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .dashboard-container {
+            padding: 20px;
+        }
+        .metric-card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .metric-card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 10px 15px;
+            font-weight: bold;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .history-table {
+            font-size: 0.875rem;
+        }
+        .refresh-btn {
+            margin-bottom: 20px;
+        }
+        .timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        .container-details {
+            display: none;
+            background-color: #f9f9f9;
+            border-top: 1px solid #dee2e6;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .container-row {
+            cursor: pointer;
+        }
+        .container-row:hover {
+            background-color: #f5f5f5;
+        }
+        .badge-running {
+            background-color: #28a745;
+        }
+        .badge-stopped {
+            background-color: #dc3545;
+        }
+        .stream-active {
+            color: green;
+            font-weight: bold;
+        }
+        .stream-inactive {
+            color: red;
+            font-weight: bold;
+        }
+        .icon-available {
+            color: green;
+        }
+        .icon-unavailable {
+            color: #ccc;
+        }
+        .server-info {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .server-selector {
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Orochi System Health Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container dashboard-container">
+        <!-- Server Info -->
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card server-info">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div>
+                                <h5 class="mb-0" id="serverName">Loading server info...</h5>
+                                <p class="mb-0 text-muted" id="serverLocation">Location: Unknown</p>
+                                <small class="text-muted" id="serverId">ID: Unknown</small>
+                                <small class="text-muted ms-3" id="serverOs">OS: Unknown</small>
+                            </div>
+                            <div class="ms-auto server-selector">
+                                <select id="serverSelector" class="form-select">
+                                    <option value="">Loading servers...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col">
+                <button id="refreshBtn" class="btn btn-primary refresh-btn">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh Data
+                </button>
+                <span id="lastUpdated" class="ms-3 timestamp"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- System Metrics -->
+            <div class="col-md-6">
+                <div class="card metric-card">
+                    <div class="metric-card-header">System CPU</div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <p>Current Usage</p>
+                                <p class="metric-value" id="cpuUsage">--</p>
+                            </div>
+                            <div class="col-6">
+                                <p>Cores</p>
+                                <p class="metric-value" id="cpuCores">--</p>
+                            </div>
+                        </div>
+                        <h6 class="mt-3">History (Last 3 Records)</h6>
+                        <table class="table table-sm history-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cpuHistory">
+                                <tr><td colspan="2">No data available</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Metrics -->
+            <div class="col-md-6">
+                <div class="card metric-card">
+                    <div class="metric-card-header">System Memory</div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <p>Usage</p>
+                                <p class="metric-value" id="memoryUsage">--</p>
+                            </div>
+                            <div class="col-6">
+                                <p>Free (MB)</p>
+                                <p class="metric-value" id="memoryFree">--</p>
+                            </div>
+                        </div>
+                        <h6 class="mt-3">History (Last 3 Records)</h6>
+                        <table class="table table-sm history-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="memoryHistory">
+                                <tr><td colspan="2">No data available</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Storage Metrics -->
+            <div class="col-md-6">
+                <div class="card metric-card">
+                    <div class="metric-card-header">Storage Disks</div>
+                    <div class="card-body" id="storageDisks">
+                        <p>No disk information available</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Network Metrics -->
+            <div class="col-md-6">
+                <div class="card metric-card">
+                    <div class="metric-card-header">Network Interfaces</div>
+                    <div class="card-body" id="networkInterfaces">
+                        <p>No network interface information available</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- RTSP Streams -->
+            <div class="col-md-12">
+                <div class="card metric-card">
+                    <div class="metric-card-header">RTSP Streams</div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Stream Name</th>
+                                        <th>URL</th>
+                                        <th>Status</th>
+                                        <th>Video/Audio</th>
+                                        <th>Codec Info</th>
+                                        <th>Last Checked</th>
+                                        <th>Failures</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rtspStreams">
+                                    <tr><td colspan="7">No streams found</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Docker Containers -->
+            <div class="col-md-12">
+                <div class="card metric-card">
+                    <div class="metric-card-header">Docker Containers</div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Image</th>
+                                        <th>Status</th>
+                                        <th>CPU</th>
+                                        <th>Memory</th>
+                                        <th>Network I/O</th>
+                                        <th>Block I/O</th>
+                                        <th>PIDs</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dockerContainers">
+                                    <tr><td colspan="8">No containers found</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store the current server ID
+        let currentServerId = null;
+        let serverList = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load server list first
+            fetchServerList();
+            
+            // Setup server selector change event
+            document.getElementById('serverSelector').addEventListener('change', function() {
+                const serverId = this.value;
+                if (serverId) {
+                    currentServerId = serverId;
+                    fetchServerData(serverId);
+                }
+            });
+            
+            // Refresh button click handler
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                if (currentServerId) {
+                    fetchServerData(currentServerId);
+                } else {
+                    fetchData();
+                }
+            });
+            
+            // Setup auto-refresh every 15 seconds
+            setInterval(function() {
+                if (currentServerId) {
+                    fetchServerData(currentServerId);
+                } else {
+                    fetchData();
+                }
+            }, 15000);
+        });
+        
+        function fetchServerList() {
+            fetch('/api/metrics/servers')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received server list:', data);
+                    serverList = data;
+                    
+                    const selector = document.getElementById('serverSelector');
+                    
+                    if (data.length === 0) {
+                        selector.innerHTML = '<option value="">No servers found</option>';
+                        return;
+                    }
+                    
+                    let options = '<option value="">Select a server</option>';
+                    data.forEach(server => {
+                        options += `<option value="${server.id}">${server.name || server.id}</option>`;
+                    });
+                    
+                    selector.innerHTML = options;
+                    
+                    // If only one server, select it automatically
+                    if (data.length === 1) {
+                        selector.value = data[0].id;
+                        currentServerId = data[0].id;
+                        fetchServerData(currentServerId);
+                    } else {
+                        // Otherwise, fetch data from all servers
+                        fetchData();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching server list:', error);
+                    document.getElementById('serverSelector').innerHTML = 
+                        '<option value="">Error loading servers</option>';
+                    
+                    // Fall back to default metrics
+                    fetchData();
+                });
+        }
+        
+        function fetchServerData(serverId) {
+            fetch(`/api/metrics/server/${serverId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received server data:', data);
+                    
+                    // Update server info
+                    updateServerInfo(data.server_info);
+                    
+                    // Update metrics
+                    updateSystemMetrics(data.system);
+                    updateDockerMetrics(data.docker);
+                    updateStorageMetrics(data.storage);
+                    updateNetworkMetrics(data.network);
+                    updateRtspMetrics(data.rtsp);
+                    
+                    // Update history
+                    if (data.history) {
+                        updateHistoryTable('cpuHistory', data.history.cpu);
+                        updateHistoryTable('memoryHistory', data.history.memory);
+                    }
+                    
+                    // Update timestamp
+                    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+                })
+                .catch(error => {
+                    console.error('Error fetching server data:', error);
+                });
+        }
+        
+        function fetchData() {
+            // Use the all metrics endpoint to get data from all servers
+            fetch('/api/metrics/all')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received all data:', data);
+                    
+                    // Get the server list
+                    const servers = data.servers || [];
+                    
+                    if (servers.length > 0) {
+                        // Use the first server's data for display if no server is selected
+                        const firstServerId = servers[0].id;
+                        const serverData = data[firstServerId];
+                        
+                        if (serverData) {
+                            // Update server info
+                            updateServerInfo(serverData.server_info);
+                            
+                            // Update metrics from the first server
+                            updateSystemMetrics(serverData.system);
+                            updateDockerMetrics(serverData.docker);
+                            updateStorageMetrics(serverData.storage);
+                            updateNetworkMetrics(serverData.network);
+                            updateRtspMetrics(serverData.rtsp);
+                            
+                            // Update history
+                            if (serverData.history) {
+                                updateHistoryTable('cpuHistory', serverData.history.cpu);
+                                updateHistoryTable('memoryHistory', serverData.history.memory);
+                            }
+                        }
+                    } else {
+                        // Fall back to the old format if no servers array
+                        updateSystemMetrics(data.system);
+                        updateDockerMetrics(data.docker);
+                        updateStorageMetrics(data.storage);
+                        updateNetworkMetrics(data.network);
+                        updateRtspMetrics(data.rtsp);
+                    }
+                    
+                    // Update timestamp
+                    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+                })
+                .catch(error => {
+                    console.error('Error fetching metrics:', error);
+                });
+                
+            // Fallback for history data
+            fetch('/api/metrics/history')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received history data:', data);
+                    // Update history tables
+                    updateHistoryTable('cpuHistory', data.cpu);
+                    updateHistoryTable('memoryHistory', data.memory);
+                })
+                .catch(error => {
+                    console.error('Error fetching history:', error);
+                });
+        }
+        
+        function updateServerInfo(serverInfo) {
+            if (!serverInfo) return;
+            
+            document.getElementById('serverName').textContent = serverInfo.name || 'Unknown Server';
+            document.getElementById('serverLocation').textContent = 'Location: ' + (serverInfo.location || 'Unknown');
+            document.getElementById('serverId').textContent = 'ID: ' + (serverInfo.id || 'Unknown');
+            document.getElementById('serverOs').textContent = 'OS: ' + (serverInfo.os_name || 'Unknown');
+        }
+        
+        function updateSystemMetrics(systemData) {
+            if (!systemData) return;
+            
+            // CPU metrics
+            const cpuData = systemData.cpu || {};
+            document.getElementById('cpuUsage').textContent = cpuData.usage_percent ? cpuData.usage_percent + '%' : '--';
+            document.getElementById('cpuCores').textContent = cpuData.cores || '--';
+            
+            // Memory metrics
+            const memoryData = systemData.memory || {};
+            document.getElementById('memoryUsage').textContent = memoryData.usage_percent ? memoryData.usage_percent + '%' : '--';
+            document.getElementById('memoryFree').textContent = memoryData.free_mb || '--';
+        }
+        
+        function updateRtspMetrics(rtspData) {
+            if (!rtspData || !rtspData.streams) return;
+            
+            const streamsTable = document.getElementById('rtspStreams');
+            const streams = rtspData.streams;
+            
+            if (Object.keys(streams).length === 0) {
+                streamsTable.innerHTML = '<tr><td colspan="7">No streams found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            for (const streamName in streams) {
+                const stream = streams[streamName];
+                const isActive = stream.active === true;
+                const hasVideo = stream.has_video === true;
+                const hasAudio = stream.has_audio === true;
+                
+                const lastCheckedDate = new Date(parseInt(stream.last_checked));
+                const formattedDate = lastCheckedDate.toLocaleTimeString();
+                
+                html += `<tr>
+                    <td>${stream.stream_name || streamName}</td>
+                    <td>${stream.stream_url || '--'}</td>
+                    <td><span class="badge ${isActive ? 'bg-success' : 'bg-danger'}">${isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td>
+                        <span class="${hasVideo ? 'icon-available' : 'icon-unavailable'}">
+                            <i class="bi bi-camera-video-fill"></i> Video
+                        </span>
+                        <br>
+                        <span class="${hasAudio ? 'icon-available' : 'icon-unavailable'}">
+                            <i class="bi bi-volume-up-fill"></i> Audio
+                        </span>
+                    </td>
+                    <td>${stream.codec_type || '--'}</td>
+                    <td>${formattedDate}</td>
+                    <td>${stream.consecutive_failures || 0}</td>
+                </tr>`;
+                
+                // Add details row if there's an error message
+                if (!isActive && stream.error_message) {
+                    html += `<tr>
+                        <td colspan="7" class="text-danger"><small>Error: ${stream.error_message}</small></td>
+                    </tr>`;
+                }
+            }
+            
+            streamsTable.innerHTML = html;
+        }
+        
+        function updateDockerMetrics(dockerData) {
+            if (!dockerData || !dockerData.containers) return;
+            
+            const containersTable = document.getElementById('dockerContainers');
+            const containers = dockerData.containers;
+            
+            if (Object.keys(containers).length === 0) {
+                containersTable.innerHTML = '<tr><td colspan="8">No containers found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            for (const containerId in containers) {
+                const container = containers[containerId];
+                const info = container.info || {};
+                const stats = container.stats || {};
+                
+                const statusBadgeClass = info.simple_status === 'running' ? 'bg-success' : 'bg-danger';
+                
+                html += `<tr class="container-row" data-container-id="${containerId}">
+                    <td>${info.name || containerId}</td>
+                    <td>${info.image || '--'}</td>
+                    <td><span class="badge ${statusBadgeClass}">${info.status || 'unknown'}</span></td>
+                    <td>${stats.cpu_percent || '--'}%</td>
+                    <td>${stats.memory_percent || '--'}% (${stats.memory_used || '--'})</td>
+                    <td>${stats.net_io || '--'}</td>
+                    <td>${stats.block_io || '--'}</td>
+                    <td>${stats.pids || '--'}</td>
+                </tr>`;
+            }
+            
+            containersTable.innerHTML = html;
+            
+            // Add click event for container details
+            document.querySelectorAll('.container-row').forEach(row => {
+                row.addEventListener('click', function() {
+                    const containerId = this.getAttribute('data-container-id');
+                    // You could implement detailed view here
+                    console.log('Container clicked:', containerId);
+                });
+            });
+        }
+        
+        function updateStorageMetrics(storageData) {
+            if (!storageData || !storageData.disks) return;
+            
+            const disksDiv = document.getElementById('storageDisks');
+            const disks = storageData.disks;
+            
+            if (Object.keys(disks).length === 0) {
+                disksDiv.innerHTML = '<p>No disk information available</p>';
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-sm">' +
+                     '<thead><tr><th>Mount</th><th>Usage</th><th>Free</th><th>Total</th></tr></thead>' +
+                     '<tbody>';
+            
+            for (const diskId in disks) {
+                const disk = disks[diskId];
+                
+                html += `<tr>
+                    <td>${disk.mount_point || diskId}</td>
+                    <td><div class="progress" style="height: 20px;">
+                      <div class="progress-bar ${parseFloat(disk.usage_percent) > 80 ? 'bg-danger' : 'bg-success'}" 
+                           role="progressbar" 
+                           style="width: ${disk.usage_percent}%;" 
+                           aria-valuenow="${disk.usage_percent}" 
+                           aria-valuemin="0" 
+                           aria-valuemax="100">${disk.usage_percent}%</div>
+                    </div></td>
+                    <td>${disk.free_gb} GB</td>
+                    <td>${disk.total_gb} GB</td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table></div>';
+            disksDiv.innerHTML = html;
+        }
+        
+        function updateNetworkMetrics(networkData) {
+            if (!networkData || !networkData.interfaces) return;
+            
+            const interfacesDiv = document.getElementById('networkInterfaces');
+            const interfaces = networkData.interfaces;
+            
+            if (Object.keys(interfaces).length === 0) {
+                interfacesDiv.innerHTML = '<p>No network interface information available</p>';
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-sm">' +
+                     '<thead><tr><th>Interface</th><th>Status</th><th>Received</th><th>Sent</th></tr></thead>' +
+                     '<tbody>';
+            
+            for (const interfaceName in interfaces) {
+                const iface = interfaces[interfaceName];
+                
+                html += `<tr>
+                    <td>${iface.name || interfaceName}</td>
+                    <td><span class="badge ${iface.status === 'UP' ? 'bg-success' : 'bg-secondary'}">${iface.status || 'unknown'}</span></td>
+                    <td>${iface.received_mb || '0'} MB (${iface.received_rate_kbps || '0'} KB/s)</td>
+                    <td>${iface.sent_mb || '0'} MB (${iface.sent_rate_kbps || '0'} KB/s)</td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table></div>';
+            interfacesDiv.innerHTML = html;
+        }
+        
+        function updateHistoryTable(tableId, historyData) {
+            const table = document.getElementById(tableId);
+            
+            if (!historyData || historyData.length === 0) {
+                table.innerHTML = '<tr><td colspan="2">No data available</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            historyData.forEach(record => {
+                const date = new Date(Number(record.timestamp));
+                html += `<tr>
+                    <td>${date.toLocaleTimeString()}</td>
+                    <td>${typeof record.value === 'number' ? record.value.toFixed(2) + '%' : record.value}</td>
+                </tr>`;
+            });
+            
+            table.innerHTML = html;
+        }
+    </script>
+    
+    <!-- Include Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</body>
+</html> 

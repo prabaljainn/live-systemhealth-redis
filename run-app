@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# ---------------- Parse CLI options ----------------------------------------
+while getopts "dh:pm" opt; do
+  case $opt in
+    h) HOST="$OPTARG" ;;
+    p) PROFILES="prod,debug,minimal" ;;
+    d) REMOTEDEBUG="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,address=5050,suspend=n" ;;
+    m)
+       PROFILES="${PROFILES},mongo"
+      #  MONGODB_URI="--spring.data.mongodb.uri=mongodb://$HOST:27017/receiver"
+       ;;
+    *) echo "USAGE: $0 [-h HOST] [-p prod] [-d debug] [-m mongo]" ; exit 1 ;;
+  esac
+done
+
+# ---------------- Launch ----------------------------------------------------
+set -x
+exec java ${REMOTEDEBUG} -jar target/system-health-monitoring-*.jar \
+  --spring.profiles.active="${PROFILES}" \
+  ${MONGODB_URI}
