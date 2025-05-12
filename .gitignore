@@ -113,6 +113,7 @@ local.properties
 
 # Package Files #
 *.jar
+*.orignal
 *.war
 *.nar
 *.ear

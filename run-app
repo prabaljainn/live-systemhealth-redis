@@ -1,21 +1,219 @@
 #!/usr/bin/env bash
 
-# ---------------- Parse CLI options ----------------------------------------
-while getopts "dh:pm" opt; do
+# System Health Monitoring Run Script
+# This script builds (if needed) and runs the application
+
+# Set default configuration
+REDIS_HOST=${REDIS_HOST:-"sudocodes.com"}
+REDIS_PORT=${REDIS_PORT:-"6379"}
+SERVER_ID=${SERVER_ID:-"local-server"}
+SERVER_PORT=${SERVER_PORT:-"8888"}
+SERVER_ADDRESS=${SERVER_ADDRESS:-"localhost"}
+BIND_ALL=false
+DEBUG_MODE=false
+BUILD=false
+INTERACTIVE=true
+
+# Color output for prompts
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function for colored output
+function log_prompt() {
+    echo -e "${BLUE}[PROMPT]${NC} $1"
+}
+
+function log_info() {
+    echo -e "${YELLOW}[INFO]${NC} $1"
+}
+
+function log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+# Parse CLI options
+# If any arguments are passed, switch to non-interactive mode
+if [ $# -gt 0 ]; then
+    INTERACTIVE=false
+fi
+
+while getopts "h:p:r:i:n:l:s:a:ebdy" opt; do
   case $opt in
-    h) HOST="$OPTARG" ;;
-    p) PROFILES="prod,debug,minimal" ;;
-    d) REMOTEDEBUG="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,address=5050,suspend=n" ;;
-    m)
-       PROFILES="${PROFILES},mongo"
-      #  MONGODB_URI="--spring.data.mongodb.uri=mongodb://$HOST:27017/receiver"
+    h) REDIS_HOST="$OPTARG"; INTERACTIVE=false ;;
+    p) REDIS_PORT="$OPTARG"; INTERACTIVE=false ;;
+    r) REDIS_PASSWORD="$OPTARG"; INTERACTIVE=false ;;
+    i) SERVER_ID="$OPTARG"; INTERACTIVE=false ;;
+    n) SERVER_DISPLAY_NAME="$OPTARG"; INTERACTIVE=false ;;
+    l) SERVER_LOCATION="$OPTARG"; INTERACTIVE=false ;;
+    s) SERVER_PORT="$OPTARG"; INTERACTIVE=false ;;
+    a) SERVER_ADDRESS="$OPTARG"; INTERACTIVE=false ;;
+    e) BIND_ALL=true; SERVER_ADDRESS="0.0.0.0"; INTERACTIVE=false ;;
+    b) BUILD=true; INTERACTIVE=false ;;
+    d) DEBUG_MODE=true; INTERACTIVE=false ;;
+    y) INTERACTIVE=false ;;
+    *) 
+       echo "System Health Monitoring Tool"
+       echo "USAGE: $0 [-h redis_host] [-p redis_port] [-r redis_password] [-i server_id] [-n server_name] [-l location] [-s port] [-a address] [-e] [-b build] [-d debug] [-y]"
+       echo ""
+       echo "Options:"
+       echo "  -h : Redis host (default: localhost)"
+       echo "  -p : Redis port (default: 6379)"
+       echo "  -r : Redis password"
+       echo "  -i : Server ID (default: local-server)"
+       echo "  -n : Server display name"
+       echo "  -l : Server location"
+       echo "  -s : Server port (default: 8080)"
+       echo "  -a : Server bind address (default: localhost)"
+       echo "  -e : Bind to all interfaces (0.0.0.0)"
+       echo "  -b : Force rebuild the application"
+       echo "  -d : Enable remote debugging on port 5050"
+       echo "  -y : Non-interactive mode (use defaults for all prompts)"
+       exit 1 
        ;;
-    *) echo "USAGE: $0 [-h HOST] [-p prod] [-d debug] [-m mongo]" ; exit 1 ;;
   esac
 done
 
-# ---------------- Launch ----------------------------------------------------
-set -x
-exec java ${REMOTEDEBUG} -jar target/system-health-monitoring-*.jar \
-  --spring.profiles.active="${PROFILES}" \
-  ${MONGODB_URI}
+# Interactive mode - ask for configuration if no parameters were provided
+if [ "$INTERACTIVE" = true ]; then
+    log_info "Running in interactive mode"
+    
+    # Ask for port
+    log_prompt "Enter server port [8080]: "
+    read -r server_port_input
+    if [[ -n "$server_port_input" ]]; then
+        SERVER_PORT="$server_port_input"
+    fi
+    
+    # Ask for binding
+    log_prompt "Bind to all network interfaces? This allows remote access (y/n) [n]: "
+    read -r bind_all
+    if [[ "$bind_all" == "y" ]]; then
+        BIND_ALL=true
+        SERVER_ADDRESS="0.0.0.0"
+        log_info "Application will be accessible from remote machines"
+    else
+        log_prompt "Enter server bind address [localhost]: "
+        read -r server_address_input
+        if [[ -n "$server_address_input" ]]; then
+            SERVER_ADDRESS="$server_address_input"
+        fi
+    fi
+    
+    # Ask for Redis configuration
+    log_prompt "Use local Redis (localhost:6379)? (y/n) [y]: "
+    read -r use_local_redis
+    if [[ "$use_local_redis" == "n" ]]; then
+        log_prompt "Enter Redis host: "
+        read -r redis_host_input
+        if [[ -n "$redis_host_input" ]]; then
+            REDIS_HOST="$redis_host_input"
+        fi
+        
+        log_prompt "Enter Redis port [6379]: "
+        read -r redis_port_input
+        if [[ -n "$redis_port_input" ]]; then
+            REDIS_PORT="$redis_port_input"
+        fi
+        
+        log_prompt "Enter Redis password (leave empty for none): "
+        read -r redis_password_input
+        if [[ -n "$redis_password_input" ]]; then
+            REDIS_PASSWORD="$redis_password_input"
+        fi
+    fi
+    
+    # Ask for server identity
+    log_prompt "Configure server identity? (y/n) [n]: "
+    read -r configure_identity
+    if [[ "$configure_identity" == "y" ]]; then
+        log_prompt "Enter server ID [local-server]: "
+        read -r server_id_input
+        if [[ -n "$server_id_input" ]]; then
+            SERVER_ID="$server_id_input"
+        fi
+        
+        log_prompt "Enter server display name: "
+        read -r server_name_input
+        if [[ -n "$server_name_input" ]]; then
+            SERVER_DISPLAY_NAME="$server_name_input"
+        fi
+        
+        log_prompt "Enter server location: "
+        read -r server_location_input
+        if [[ -n "$server_location_input" ]]; then
+            SERVER_LOCATION="$server_location_input"
+        fi
+    fi
+    
+    # Ask for debug mode
+    log_prompt "Enable debug mode? (y/n) [n]: "
+    read -r enable_debug
+    if [[ "$enable_debug" == "y" ]]; then
+        DEBUG_MODE=true
+    fi
+fi
+
+# Determine if we need to build the application
+if [[ "$BUILD" == "true" || ! -f "target/system-health-monitoring-0.0.1-SNAPSHOT.jar" ]]; then
+    echo "Building application..."
+    if ! command -v mvn &> /dev/null; then
+        echo "Maven not found. Please install Maven to build the application."
+        exit 1
+    fi
+    mvn clean package -DskipTests
+    
+    # Check if build was successful
+    if [ $? -ne 0 ]; then
+        echo "Build failed!"
+        exit 1
+    fi
+fi
+
+# Set up debug options if needed
+DEBUG_OPTS=""
+if [ "$DEBUG_MODE" == "true" ]; then
+    DEBUG_OPTS="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,address=5050,suspend=n"
+    echo "Debug mode enabled on port 5050"
+fi
+
+# Export environment variables for configuration
+export REDIS_HOST="$REDIS_HOST"
+export REDIS_PORT="$REDIS_PORT"
+[ -n "$REDIS_PASSWORD" ] && export REDIS_PASSWORD="$REDIS_PASSWORD"
+export SERVER_ID="$SERVER_ID"
+[ -n "$SERVER_DISPLAY_NAME" ] && export SERVER_DISPLAY_NAME="$SERVER_DISPLAY_NAME"
+[ -n "$SERVER_LOCATION" ] && export SERVER_LOCATION="$SERVER_LOCATION"
+export SERVER_PORT="$SERVER_PORT"
+export SERVER_ADDRESS="$SERVER_ADDRESS"
+
+# Display configuration
+log_info "Starting System Health Monitoring..."
+log_info "Redis: $REDIS_HOST:$REDIS_PORT"
+log_info "Server ID: $SERVER_ID"
+log_info "Server Port: $SERVER_PORT"
+log_info "Binding to: $SERVER_ADDRESS"
+[ -n "$SERVER_DISPLAY_NAME" ] && log_info "Server Name: $SERVER_DISPLAY_NAME"
+[ -n "$SERVER_LOCATION" ] && log_info "Server Location: $SERVER_LOCATION"
+
+# Check if port is already in use
+if command -v nc &>/dev/null; then
+    if nc -z localhost $SERVER_PORT &>/dev/null; then
+        log_info "Port $SERVER_PORT is already in use. Choose a different port."
+        log_prompt "Enter new port: "
+        read -r new_port
+        if [[ -n "$new_port" ]]; then
+            SERVER_PORT="$new_port"
+            export SERVER_PORT="$SERVER_PORT"
+            log_success "Using port $SERVER_PORT instead"
+        else
+            echo "No port specified. Exiting."
+            exit 1
+        fi
+    fi
+fi
+
+# Run the application
+exec java $DEBUG_OPTS -jar target/system-health-monitoring-*.jar --server.port=$SERVER_PORT --server.address=$SERVER_ADDRESS
