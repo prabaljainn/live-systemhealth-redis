@@ -137,3 +137,11 @@ Available options:
 ## License
 
 MIT
+
+## Screenshots
+
+<img width="1680" alt="Screenshot 2025-05-13 at 12 02 49 AM" src="https://github.com/user-attachments/assets/1536c627-0eb9-4a4c-b5f9-6394e7b38837" />
+<img width="1680" alt="Screenshot 2025-05-13 at 12 02 56 AM" src="https://github.com/user-attachments/assets/687f3123-92fb-4152-a334-2b9d83e80436" />
+<img width="1680" alt="Screenshot 2025-05-13 at 12 03 02 AM" src="https://github.com/user-attachments/assets/98955592-a6e9-4b55-b8ed-cf514d3edf0c" />
+<img width="1680" alt="Screenshot 2025-05-13 at 12 03 09 AM" src="https://github.com/user-attachments/assets/324a86af-f60a-4a94-8091-31cb1046253b" />
+
