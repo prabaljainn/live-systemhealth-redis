@@ -4,8 +4,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Abstract base class for metrics collectors with proper shutdown handling
@@ -15,9 +17,16 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
 
     protected final RedisTemplate<String, Object> redisTemplate;
     protected final AtomicBoolean shuttingDown = new AtomicBoolean(false);
+    private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+    private final int maxConsecutiveFailuresToLog = 3;
     
     protected AbstractMetricsCollector(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
+    }
+    
+    @PostConstruct
+    public void init() {
+        log.info("{} initialized", getClass().getSimpleName());
     }
     
     @PreDestroy
@@ -47,11 +56,23 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
         
         try {
             operation.run();
+            // Reset consecutive failures on success
+            if (consecutiveFailures.get() > 0) {
+                log.info("Redis connection restored after {} consecutive failures", consecutiveFailures.get());
+                consecutiveFailures.set(0);
+            }
         } catch (RedisConnectionFailureException e) {
             if (isShuttingDown()) {
                 log.debug("Redis connection failed during shutdown (expected)");
             } else {
-                log.error("{}: {}", errorMessage, e.getMessage());
+                int failures = consecutiveFailures.incrementAndGet();
+                // Only log every few failures to avoid filling logs
+                if (failures <= maxConsecutiveFailuresToLog || failures % 10 == 0) {
+                    log.error("{}: {}", errorMessage, e.getMessage());
+                    if (failures == maxConsecutiveFailuresToLog) {
+                        log.warn("Suppressing excessive Redis connection errors. Will log every 10th error.");
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("{}", errorMessage, e);
