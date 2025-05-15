@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  # Simple Redis server with persistence and authentication
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no --requirepass redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local 
