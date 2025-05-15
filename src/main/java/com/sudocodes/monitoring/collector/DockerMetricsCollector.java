@@ -5,24 +5,26 @@ import com.sudocodes.monitoring.model.ServerIdentity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PreDestroy;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 @Slf4j
-public class DockerMetricsCollector implements MetricsCollector {
+public class DockerMetricsCollector extends AbstractMetricsCollector {
 
-    private final RedisTemplate<String, Object> redisTemplate;
     private final ServerIdentity serverIdentity;
     
     @Value("${metrics.retention.max_records:3}")
@@ -33,13 +35,18 @@ public class DockerMetricsCollector implements MetricsCollector {
     
     @Autowired
     public DockerMetricsCollector(RedisTemplate<String, Object> redisTemplate, ServerIdentity serverIdentity) {
-        this.redisTemplate = redisTemplate;
+        super(redisTemplate);
         this.serverIdentity = serverIdentity;
     }
     
     @Override
     @Scheduled(fixedRateString = "${metrics.schedule.docker:30000}")
     public void collectMetrics() {
+        if (isShuttingDown()) {
+            log.debug("Skipping metrics collection - application is shutting down");
+            return;
+        }
+        
         if (!dockerEnabled) {
             log.debug("Docker metrics collection is disabled");
             return;
@@ -53,6 +60,11 @@ public class DockerMetricsCollector implements MetricsCollector {
             
             // For each container, get stats
             for (Map<String, String> container : containers) {
+                if (isShuttingDown()) {
+                    log.debug("Skipping remaining containers - application is shutting down");
+                    return;
+                }
+                
                 String containerId = container.get("id");
                 String containerName = container.get("name");
                 String status = container.get("status");
@@ -75,7 +87,11 @@ public class DockerMetricsCollector implements MetricsCollector {
                 }
             }
         } catch (Exception e) {
-            log.error("Error collecting Docker metrics", e);
+            if (isShuttingDown()) {
+                log.debug("Error during shutdown (expected): {}", e.getMessage());
+            } else {
+                log.error("Error collecting Docker metrics", e);
+            }
         }
     }
     
@@ -204,29 +220,32 @@ public class DockerMetricsCollector implements MetricsCollector {
      * Save container info to Redis
      */
     private void saveContainerInfo(String containerId, Map<String, String> info) {
-        try {
-            // Store container info in Redis hash using server-prefixed key
-            String key = serverIdentity.formatKey("docker", "container:" + containerId);
-            redisTemplate.opsForHash().putAll(key, new HashMap<>(info));
-            
+        final String key = serverIdentity.formatKey("docker", "container:" + containerId);
+        final Map<String, String> infoMap = new HashMap<>(info);
+        
+        safeRedisOperation(() -> {
+            redisTemplate.opsForHash().putAll(key, infoMap);
             log.debug("Stored container info for {}: {}", containerId, info);
-        } catch (Exception e) {
-            log.error("Error saving container info to Redis", e);
-        }
+        }, "Error saving container info to Redis");
     }
     
     /**
      * Save container stats to Redis
      */
     private void saveContainerStats(String containerId, Map<String, String> stats) {
-        try {
-            // Store current stats in Redis hash using server-prefixed key
-            String statsKey = serverIdentity.formatKey("docker", "stats:" + containerId);
-            redisTemplate.opsForHash().putAll(statsKey, new HashMap<>(stats));
+        if (isShuttingDown()) {
+            return;
+        }
+        
+        final String statsKey = serverIdentity.formatKey("docker", "stats:" + containerId);
+        final Map<String, String> statsMap = new HashMap<>(stats);
+        final long timestamp = System.currentTimeMillis();
+        
+        safeRedisOperation(() -> {
+            // Store current stats in Redis hash
+            redisTemplate.opsForHash().putAll(statsKey, statsMap);
             
             // Store time-series data for CPU and memory
-            long timestamp = System.currentTimeMillis();
-            
             if (stats.containsKey("cpu_percent")) {
                 try {
                     double cpuPercent = Double.parseDouble(stats.get("cpu_percent"));
@@ -255,24 +274,25 @@ public class DockerMetricsCollector implements MetricsCollector {
                 }
             }
             
-            log.debug("Stored container stats for {}: {}", containerId, stats);
-        } catch (Exception e) {
-            log.error("Error saving container stats to Redis: {}", e.getMessage(), e);
-        }
+            log.debug("Stored stats for container {}: CPU: {}%, Memory: {}", 
+                     containerId, stats.get("cpu_percent"), stats.get("memory_percent"));
+        }, "Error saving container stats to Redis");
     }
     
     /**
      * Trims a time-series data set to keep only the most recent records based on configured max records
      */
     private void trimTimeSeriesData(String key) {
-        try {
+        if (isShuttingDown()) {
+            return;
+        }
+        
+        safeRedisOperation(() -> {
             Long size = redisTemplate.opsForZSet().size(key);
             if (size != null && size > maxRecords) {
-                // Get all members sorted by score (timestamp)
+                // Remove oldest entries, keeping only the most recent maxRecords
                 redisTemplate.opsForZSet().removeRange(key, 0, size - maxRecords - 1);
             }
-        } catch (Exception e) {
-            log.error("Error trimming time series data for key {}: {}", key, e.getMessage());
-        }
+        }, "Error trimming time series data for key " + key);
     }
 } 
