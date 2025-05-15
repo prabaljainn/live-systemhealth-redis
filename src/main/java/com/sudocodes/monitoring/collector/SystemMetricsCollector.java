@@ -106,7 +106,35 @@ public class SystemMetricsCollector implements MetricsCollector {
         long[] ticks = processor.getSystemCpuLoadTicks();
         long tickTime = System.currentTimeMillis();
         double cpuLoad = processor.getSystemCpuLoadBetweenTicks(prevTicks);
-        double cpuUsage = cpuLoad * 100.0;
+        
+        // CPU load can be affected by measurement methodology
+        // Let's use a more accurate calculation that excludes idle time
+        long user = ticks[CentralProcessor.TickType.USER.getIndex()] - 
+                   prevTicks[CentralProcessor.TickType.USER.getIndex()];
+        long nice = ticks[CentralProcessor.TickType.NICE.getIndex()] - 
+                   prevTicks[CentralProcessor.TickType.NICE.getIndex()];
+        long sys = ticks[CentralProcessor.TickType.SYSTEM.getIndex()] - 
+                  prevTicks[CentralProcessor.TickType.SYSTEM.getIndex()];
+        long idle = ticks[CentralProcessor.TickType.IDLE.getIndex()] - 
+                   prevTicks[CentralProcessor.TickType.IDLE.getIndex()];
+        long iowait = ticks[CentralProcessor.TickType.IOWAIT.getIndex()] - 
+                     prevTicks[CentralProcessor.TickType.IOWAIT.getIndex()];
+        long irq = ticks[CentralProcessor.TickType.IRQ.getIndex()] - 
+                  prevTicks[CentralProcessor.TickType.IRQ.getIndex()];
+        long softirq = ticks[CentralProcessor.TickType.SOFTIRQ.getIndex()] - 
+                      prevTicks[CentralProcessor.TickType.SOFTIRQ.getIndex()];
+        long steal = ticks[CentralProcessor.TickType.STEAL.getIndex()] - 
+                    prevTicks[CentralProcessor.TickType.STEAL.getIndex()];
+        
+        long totalCpu = user + nice + sys + idle + iowait + irq + softirq + steal;
+        
+        // Calculate CPU usage as (totalCpu - idle) / totalCpu
+        double cpuUsage = totalCpu > 0 ? 
+                100d * (totalCpu - idle - iowait) / totalCpu : 0d;
+        
+        // Store original calculation for comparison
+        double systemCpuUsage = cpuLoad * 100.0;
+        
         prevTicks = ticks;
         prevTickTime = tickTime;
         
@@ -115,6 +143,7 @@ public class SystemMetricsCollector implements MetricsCollector {
         
         metrics.put("cores", String.valueOf(processor.getLogicalProcessorCount()));
         metrics.put("usage_percent", String.format("%.2f", cpuUsage));
+        metrics.put("system_usage_percent", String.format("%.2f", systemCpuUsage));
         
         if (loadAverage[0] != -1) {
             metrics.put("load_avg_1m", String.valueOf(loadAverage[0]));
